@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frp-config
+  namespace: default
+data:
+  frps.ini: |
+    [common]
+    bind_port = 7000
+    vhost_http_port = 8080
+  frpc.ini: |
+    [common]
+    server_addr = okkpp.io
+    server_port = 30001
+    [web]
+    type = http
+    local_ip = 10.20.14.26
+    local_port = 8080
+    custom_domains = okkpp.io
+    [http_proxy]
+    type = tcp
+    remote_port = 6000
+    plugin = http_proxy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frp-server
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frp-server
+  template:
+    metadata:
+      name: frp-server
+      labels:
+        app: frp-server
+    spec:
+      containers:
+      - name: frp-server
+        image: frp:0.36.1
+        command: ['frps', '-c', 'frps.ini']
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: frp-config
+          mountPath: /frp/frps.ini
+          subPath: frps.ini
+      volumes:
+      - name: frp-config
+        configMap:
+          name: frp-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frp-client
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frp-client
+  template:
+    metadata:
+      name: frp-client
+      labels:
+        app: frp-client
+    spec:
+      containers:
+      - name: frp-client
+        image: frp:0.36.1
+        command: ['frpc', '-c', 'frpc.ini']
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: frp-config
+          mountPath: /frp/frpc.ini
+          subPath: frpc.ini
+      volumes:
+      - name: frp-config
+        configMap:
+          name: frp-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frp-server
+  namespace: default
+spec:
+  type: NodePort
+  ports:
+  - name: frp-server
+    port: 7000
+    nodePort: 30001
+  - name: frp-vhost
+    port: 8080
+    nodePort: 30002
+  - name: frp-http-proxy
+    port: 6000
+    nodePort: 30003
+  selector:
+    app: frp-server
